@@ -1,0 +1,120 @@
+#!/bin/sh
+##
+# This is used to read platform requirements from composer.json and build the system accordingly
+##
+
+# fail hard
+set -o pipefail
+# fail harder
+set -eu
+
+# Returns boolean if command is found in $PATH
+is_cmd_available() {
+	command -v $1 >/dev/null 2>&1
+}
+
+# Installs linux package
+install_pkg() {
+	local packages=$@
+	if is_cmd_available apk; then
+		apk add $packages
+		return $?
+	fi
+}
+
+info_msg() {
+	echo "[info]: $1"
+}
+
+error() {
+	echo "[ERROR]: $1" >>/dev/stderr
+	exit 1
+}
+
+validate_json() {
+	cat $1 | jq '' >/dev/null
+}
+
+list_needed_extensions() {
+	if [ -f composer.lock ]; then
+		cat composer.lock | jq -r '.platform | keys | to_entries[] | select ('.value'|contains("ext") ) | .value | .[4:]'
+	fi
+}	
+
+if [ -f composer.lock ]; then
+	info_msg "Validating composer.lock file..."
+	validate_json composer.lock
+	set +e
+	composer_php_version_requirement=$(cat composer.lock | jq '.platform.php' 2>/dev/null)
+	set -e
+	info_msg "Found PHP version constraint: $composer_php_version_requirement"
+
+	# Check if number 5 is the first number for php5.6 and use >=php7.0 for everything else
+	# TODO: This is quite stupid and should be enhanced
+	case $(echo $composer_php_version_requirement|sed 's/[^0-9\.]*//g') in
+		5*)
+		alpine_php="php5"
+		;;
+		# Default to php7
+		*)
+		alpine_php="php7"
+		;;
+	esac
+else
+	alpine_php="php7"
+	info_msg "No php version requirement found from composer.lock"
+	info_msg "Defaulting to $alpine_php version"
+fi
+
+
+
+
+# For example composer needs these to work correctly
+alpine_composer_deps="fpm phar iconv openssl zlib curl mbstring json"
+alpine_composer_deps=$(echo $alpine_composer_deps | sed "s/[^ ]* */$alpine_php-&/g")
+
+info_msg "Installing $alpine_php"
+install_pkg $alpine_php
+
+info_msg "Installing basic php extensions"
+install_pkg $alpine_composer_deps
+
+info_msg "Defaulting php to $alpine_php"
+case $alpine_php in
+	php5)
+	ln -sf /usr/bin/php5 /usr/bin/php
+	ln -sf /usr/sbin/php-fpm5 /usr/bin/php-fpm
+	# Remove default php-fpm pool
+	rm /etc/php5/php-fpm.d/www.conf
+	# Move installed configs to php folder
+	cp -r /etc/php/* /etc/php7/
+	rm -r /etc/php
+	ln -snf /etc/php7 /etc/php
+	;;
+	php7)
+	ln -sf /usr/bin/php7 /usr/bin/php
+	ln -sf /usr/sbin/php-fpm7 /usr/bin/php-fpm
+	# Remove default php-fpm pool
+	rm /etc/php7/php-fpm.d/www.conf
+	# Move installed configs to php folder
+	cp -r /etc/php/* /etc/php7/
+	rm -r /etc/php
+	ln -snf /etc/php7 /etc/php
+	;;
+esac
+
+needed_packages=$(list_needed_extensions | sed -e "s/^/$alpine_php-/")
+if [ "$needed_packages" != "" ]; then
+	for package in $needed_packages; do
+		info_msg "Installing extension $package"
+		if ! install_pkg $package; then
+			error "Your required extension $package can't be found in $DISTRO packages"
+		fi
+	done
+fi
+
+info_msg "Installing composer"
+curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+
+info_msg "Cleaning up apk cache"
+rm -rf /var/cache/apk/* 

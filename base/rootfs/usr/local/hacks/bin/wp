@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+##
+# WP-cli wrapper
+##
+
+# Returns boolean if command is found in $PATH
+is_cmd_available() {
+	command -v $1 >/dev/null 2>&1
+}
+
+# Remove these convenient wrappers from PATH
+WRAPPER_PATH=${WRAPPER_PATH-/usr/local/hacks/bin}
+export PATH=$(echo $PATH | sed "s|"${WRAPPER_PATH}"||g")
+
+# Allow overriding the wp core path
+export WP_CORE=${WP_CORE-$WEB_ROOT/wp}
+
+# Run wp-cli
+if is_cmd_available wp; then
+	wp "$@" --path=$WP_CORE
+else
+	echo "ERROR: wp-cli is not installed"
+	echo "Install it by running: composer require wp-cli/wp-cli"
+fi

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+##
+# php-fpm wrapper with all flags for Procfile
+##
+
+exec php-fpm --nodaemonize \
+		-c /etc/php/php-fpm.ini \
+		--fpm-config /etc/php/php-fpm.conf \
+		--pid /var/run/php-fpm.pid \
+		--force-stderr

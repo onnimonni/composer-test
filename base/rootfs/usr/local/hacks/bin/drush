@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+##
+# Drush wrapper
+##
+
+# Returns boolean if command is found in $PATH
+is_cmd_available() {
+	command -v $1 >/dev/null 2>&1
+}
+
+# Reset these hacks from PATH
+WRAPPER_PATH=${WRAPPER_PATH-/usr/local/hacks/bin}
+export PATH=$(echo $PATH | sed "s|"${WRAPPER_PATH}"||g")
+
+# Allow overriding the drush core path
+export DRUSH_PATH=${DRUSH_PATH-$WEB_ROOT}
+
+# Run drush
+if is_cmd_available drush; then
+	drush "$@" --root=$DRUSH_PATH
+else
+	echo "ERROR: drush is not installed"
+	echo "Install it by running: composer require drush/drush"
+fi
+

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+##
+# nginx wrapper with all flags for Procfile
+##
+
+exec nginx -g "daemon off;"
